@@ -3,16 +3,18 @@ import cv2
 import torch
 import numpy as np
 import mmcv
+import os
 from mmdet.apis import inference_detector, init_detector
 
 import logging
 from tqdm import tqdm
+import vid_split_img
 
 def parse_args():
     parser = argparse.ArgumentParser(description='MMdet Silhouette Extraction Cropper')
     parser.add_argument(
         "-i", "--input",
-        help = "Camera id or the path to the video file.",
+        help = "Path to the video file.",
     )
     parser.add_argument(
         "-o", "--output",
@@ -23,6 +25,7 @@ def parse_args():
         "-m", "--multiple",
         type=bool,
         action=argparse.BooleanOptionalAction,
+        default= "-m",
         help="Toggles detecting multiple people.",
     )
     parser.add_argument(
@@ -68,9 +71,10 @@ def main():
 
             bbox_result, segm_results = result 
             labels = [
-            np.full(bbox.shape[0], i, dtype=np.int32)\
-            for i, bbox in enumerate(bbox_result)
-        ]
+            np.full(bbox.shape[0], i, dtype=np.int32)
+            for i, bbox in enumerate(bbox_result) 
+            ]
+
             labels = np.concatenate(labels)
             bboxes = np.vstack(bbox_result)
             labels_impt = np.where(bboxes[:, -1] > opt.threshold)[0]
@@ -98,7 +102,6 @@ def main():
             right_border_list = []
             top_border_list = []
             bottom_border_list = []
-            bbox_area_list = []
 
             # count_list is the number of subjects
             for i in count_list:
@@ -110,6 +113,8 @@ def main():
                 top_border = int(bboxes[i][1]) - 40
                 right_border = int(bboxes[i][2]) + 40
                 bottom_border = int(bboxes[i][3]) + 40
+
+                COM = (int(bboxes[i][0]) + int(bboxes[i][2]))/2 + (int(bboxes[i][1]) + int(bboxes[i][3]))/2
 
                 if left_border >= frame_width:
                     left_border = frame_width - 1
@@ -134,32 +139,20 @@ def main():
                 top_border_list.append(top_border)
                 bottom_border_list.append(bottom_border)
 
-            difference = []
+            area_multi = []
             bbox_dimens = zip(left_border_list, right_border_list, top_border_list, bottom_border_list)
             for i, j, k, l in bbox_dimens:
-                difference.append(abs(i-j)*abs(k-l))
-            max_val = difference.index(max(difference)) 
-            # gives zero because that's the first and largest person  
+                area_multi.append(abs(i-j)*abs(k-l))
+
+            max_val = area_multi.index(max(area_multi)) 
+            # gives zero because that's the first and largest person
+            
 
             if len(count_list) > 1:
                 img_show[top_border_list[max_val]:bottom_border_list[max_val], left_border_list[max_val]] = bbox_mask
                 img_show[top_border_list[max_val]:bottom_border_list[max_val], right_border_list[max_val]] = bbox_mask
                 img_show[top_border_list[max_val], left_border_list[max_val]:right_border_list[max_val]] = bbox_mask
                 img_show[bottom_border_list[max_val], left_border_list[max_val]:right_border_list[max_val]] = bbox_mask
-
- 
-
-
-            # try:
-            #     top_border = min(top_border_list)
-            #     bottom_border = max(bottom_border_list)
-            #     left_border = min(left_border_list)
-            #     right_border = max(right_border_list)
-            # except:
-            #     top_border = 0
-            #     bottom_border = frame_height
-            #     left_border = 0
-            #     right_border = frame_width
 
             out.write((img_show).astype(np.uint8))
 
@@ -179,3 +172,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    # vid_split_img.main()
