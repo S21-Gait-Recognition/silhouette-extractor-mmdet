@@ -1,4 +1,5 @@
 import argparse
+from xml.sax import SAXParseException
 import cv2
 import torch
 import numpy as np
@@ -9,6 +10,9 @@ from mmdet.apis import inference_detector, init_detector
 import logging
 from tqdm import tqdm
 import vid_split_img
+import img_crop
+
+# from model_loader import init
 
 def parse_args():
     parser = argparse.ArgumentParser(description='MMdet Silhouette Extraction Cropper')
@@ -41,16 +45,18 @@ def parse_args():
         '--camera-id', type=int, default=0, help='camera device id'
         )
     parser.add_argument(
-        '--threshold', type=float, default=0.7, help='bbox score threshold'
+        '--threshold', type=float, default=0.8, help='bbox score threshold'
         )
     opt = parser.parse_args()
     return opt
 
+opt = parse_args()
 def main():
-    opt = parse_args()
-
+    
+    # opt = parse_args()
     video = cv2.VideoCapture(opt.input)
     device = torch.device(opt.device)
+    # model = init("scnet-r50-fpn")
     model = init_detector(opt.config, opt.checkpoint, device=device)
 
     frame_width = int(video.get(3))
@@ -144,15 +150,18 @@ def main():
             for i, j, k, l in bbox_dimens:
                 area_multi.append(abs(i-j)*abs(k-l))
 
-            max_val = area_multi.index(max(area_multi)) 
-            # gives zero because that's the first and largest person
-            
+            # print('yo', area_multi)
+            if len(area_multi) > 0:
+                max_val = area_multi.index(max(area_multi)) 
+                # gives zero because that's the first and largest person
+                if len(count_list) >= 1:
+                    img_show[top_border_list[max_val]:bottom_border_list[max_val], left_border_list[max_val]] = bbox_mask
+                    img_show[top_border_list[max_val]:bottom_border_list[max_val], right_border_list[max_val]] = bbox_mask
+                    img_show[top_border_list[max_val], left_border_list[max_val]:right_border_list[max_val]] = bbox_mask
+                    img_show[bottom_border_list[max_val], left_border_list[max_val]:right_border_list[max_val]] = bbox_mask
 
-            if len(count_list) > 1:
-                img_show[top_border_list[max_val]:bottom_border_list[max_val], left_border_list[max_val]] = bbox_mask
-                img_show[top_border_list[max_val]:bottom_border_list[max_val], right_border_list[max_val]] = bbox_mask
-                img_show[top_border_list[max_val], left_border_list[max_val]:right_border_list[max_val]] = bbox_mask
-                img_show[bottom_border_list[max_val], left_border_list[max_val]:right_border_list[max_val]] = bbox_mask
+            else:
+                img_show = img_show
 
             out.write((img_show).astype(np.uint8))
 
@@ -172,4 +181,5 @@ def main():
 
 if __name__ == "__main__":
     main()
-    # vid_split_img.main()
+    vid_split_img.main(opt.output)
+    img_crop.main('./rawframes')
