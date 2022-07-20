@@ -13,6 +13,7 @@ import vid_split_img
 import img_crop
 
 # from model_loader import init
+# vincent added ^ to prototype
 
 def parse_args():
     parser = argparse.ArgumentParser(description='MMdet Silhouette Extraction Cropper')
@@ -23,13 +24,13 @@ def parse_args():
     parser.add_argument(
         "-o", "--output",
         type=str,
-        help="Output path. Make sure the dircetory exists.",
+        help="Output path. Make sure the directory folder exists.",
     )
     parser.add_argument(
         "-m", "--multiple",
         type=bool,
         action=argparse.BooleanOptionalAction,
-        default= "-m",
+        # default= "-m",
         help="Toggles detecting multiple people.",
     )
     parser.add_argument(
@@ -49,22 +50,33 @@ def parse_args():
         )
     opt = parser.parse_args()
     return opt
-
+# opt.output = ./video /vid_bbox.mp4
+# opt.output = ./video /silvid.mp4
+# opt.output = ./video /silvid_bbox.mp4
 opt = parse_args()
 def main():
     
     # opt = parse_args()
     video = cv2.VideoCapture(opt.input)
     device = torch.device(opt.device)
-    # model = init("scnet-r50-fpn")
     model = init_detector(opt.config, opt.checkpoint, device=device)
+    # model = init("scnet-r50-fpn")
 
     frame_width = int(video.get(3))
     frame_height = int(video.get(4))
     total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
     origin_fps = int(video.get(cv2.CAP_PROP_FPS))
 
-    out = cv2.VideoWriter(opt.output, cv2.VideoWriter_fourcc(
+    # writes a silhouette video
+    out_silvid = cv2.VideoWriter(opt.output+'/silvid.mp4', cv2.VideoWriter_fourcc(
+        'M', 'J', 'P', 'G'), origin_fps, (frame_width, frame_height))
+
+    # writes a silhouette video with a bbox
+    out_silvid_b = cv2.VideoWriter(opt.output+'/silvid_bbox.mp4', cv2.VideoWriter_fourcc(
+        'M', 'J', 'P', 'G'), origin_fps, (frame_width, frame_height))
+
+    # writes a normal video with a bbox
+    out_vid_b = cv2.VideoWriter(opt.output+'/vid_bbox.mp4', cv2.VideoWriter_fourcc(
         'M', 'J', 'P', 'G'), origin_fps, (frame_width, frame_height))
     
     progbar = tqdm(total=total_frames, unit='frames', desc='Analysing the frames')
@@ -102,7 +114,9 @@ def main():
                 else:
                     count += 1
 
-            img_show = np.zeros((frame_height, frame_width, 3))
+            img_silvid = np.zeros((frame_height, frame_width, 3))
+            img_silvid_b = np.zeros((frame_height, frame_width, 3))
+            img_vid_b = img
 
             left_border_list = []
             right_border_list = []
@@ -112,15 +126,25 @@ def main():
             # count_list is the number of subjects
             for i in count_list:
                 # segms[i] is (1920, 1080)
-                img_show[segms[i]] = color_mask
+                img_silvid[segms[i]] = color_mask
+                img_silvid_b[segms[i]] = color_mask
 
                 # padding the bounding boxes
-                left_border = int(bboxes[i][0]) - 40
-                top_border = int(bboxes[i][1]) - 40
-                right_border = int(bboxes[i][2]) + 40
-                bottom_border = int(bboxes[i][3]) + 40
+                # left_border = int(bboxes[i][0]) - 40
+                # top_border = int(bboxes[i][1]) - 40
+                # right_border = int(bboxes[i][2]) + 40
+                # bottom_border = int(bboxes[i][3]) + 40
+                top_border = int(bboxes[i][1])
+                bottom_border = int(bboxes[i][3])
 
-                COM = (int(bboxes[i][0]) + int(bboxes[i][2]))/2 + (int(bboxes[i][1]) + int(bboxes[i][3]))/2
+                # bbox_height = abs(top_border-bottom_border)
+
+                # COM = int(bboxes[i][0]) + int(bboxes[i][2])/2 + (int(bboxes[i][1]) + int(bboxes[i][3]))/2
+                COM = (bboxes[i][0] + bboxes[i][2])/2 
+                bbox_height = abs(top_border-bottom_border)
+
+                left_border = int(COM - 0.75*0.5*bbox_height)
+                right_border = int(COM + 0.75*0.5*bbox_height)
 
                 if left_border >= frame_width:
                     left_border = frame_width - 1
@@ -150,20 +174,28 @@ def main():
             for i, j, k, l in bbox_dimens:
                 area_multi.append(abs(i-j)*abs(k-l))
 
-            # print('yo', area_multi)
             if len(area_multi) > 0:
                 max_val = area_multi.index(max(area_multi)) 
                 # gives zero because that's the first and largest person
-                if len(count_list) >= 1:
-                    img_show[top_border_list[max_val]:bottom_border_list[max_val], left_border_list[max_val]] = bbox_mask
-                    img_show[top_border_list[max_val]:bottom_border_list[max_val], right_border_list[max_val]] = bbox_mask
-                    img_show[top_border_list[max_val], left_border_list[max_val]:right_border_list[max_val]] = bbox_mask
-                    img_show[bottom_border_list[max_val], left_border_list[max_val]:right_border_list[max_val]] = bbox_mask
+                # if len(count_list) >= 1:
+                img_silvid_b[top_border_list[max_val]:bottom_border_list[max_val], left_border_list[max_val]] = bbox_mask
+                img_silvid_b[top_border_list[max_val]:bottom_border_list[max_val], right_border_list[max_val]] = bbox_mask
+                img_silvid_b[top_border_list[max_val], left_border_list[max_val]:right_border_list[max_val]] = bbox_mask
+                img_silvid_b[bottom_border_list[max_val], left_border_list[max_val]:right_border_list[max_val]] = bbox_mask
+
+                img_vid_b[top_border_list[max_val]:bottom_border_list[max_val], left_border_list[max_val]] = bbox_mask
+                img_vid_b[top_border_list[max_val]:bottom_border_list[max_val], right_border_list[max_val]] = bbox_mask
+                img_vid_b[top_border_list[max_val], left_border_list[max_val]:right_border_list[max_val]] = bbox_mask
+                img_vid_b[bottom_border_list[max_val], left_border_list[max_val]:right_border_list[max_val]] = bbox_mask   
 
             else:
-                img_show = img_show
+                img_silvid_b = img_silvid_b
+                img_vid_b = img_vid_b
+                img_silvid = img_silvid
 
-            out.write((img_show).astype(np.uint8))
+            out_silvid_b.write((img_silvid_b).astype(np.uint8))
+            out_silvid.write((img_silvid).astype(np.uint8))
+            out_vid_b.write((img_vid_b).astype(np.uint8))
 
             progbar.update(1)
             key = cv2.waitKey(10)
@@ -177,9 +209,12 @@ def main():
     progbar.close()
     cv2.destroyAllWindows()
     video.release()
-    out.release()
+    out_silvid_b.release()
+    out_silvid.release()
+    out_vid_b.release()
 
 if __name__ == "__main__":
     main()
-    vid_split_img.main(opt.output)
+    vid_split_img.main(opt.output+'/silvid_bbox.mp4')
     img_crop.main('./rawframes')
+
